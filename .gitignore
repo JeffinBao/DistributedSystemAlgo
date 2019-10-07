@@ -3,4 +3,5 @@
 /target
 # files which support write and read operation
 backend*/
-machine_info.txt
+*.txt
+*.pcapng
