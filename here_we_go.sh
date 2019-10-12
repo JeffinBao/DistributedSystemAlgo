@@ -50,6 +50,18 @@ tell application "iTerm2"
     end repeat
     delay 0.5
     write text "start"
+
+    # close all connections and shut down servers， 80 seconds are estimated program running time
+    # if each client executes 25000 operations. This is not a good solution, but for debugging purpose,
+    # it can work.
+    delay 80
+    repeat with i from 0 to 6
+      write text "close"
+      tell application "System Events" to keystroke "[" using {command down}
+      delay 0.5
+    end repeat
+    # close the last server
+    write text "close"
   end tell
 end tell
 END
