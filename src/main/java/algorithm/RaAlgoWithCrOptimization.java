@@ -2,13 +2,13 @@ package algorithm;
 
 import constant.Constant;
 import network.Connection;
-import util.SemaUtil;
+import network.OutboundMessage;
+import network.server.MutualExclusionClient;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.Semaphore;
+import java.util.*;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * Author: JeffinBao
@@ -17,6 +17,7 @@ import java.util.concurrent.Semaphore;
  *        proposed by Carvalho-Roucairol
  */
 public class RaAlgoWithCrOptimization {
+    private static Logger logger = null;
     // me is the server/process id
     // n is the number of server/process in the system
     // ourSeqNum is the sequence number of current server/process
@@ -44,33 +45,73 @@ public class RaAlgoWithCrOptimization {
     private Map<Integer, Connection> clientConnMap = new HashMap<>();
     // distinguish different file, each file should have a RAAlgoWithCROptimization object
     private int fileId;
-    private Semaphore mutex = new Semaphore(1);
-    private Map<Integer, Connection> deferMap = new HashMap<>();
-    private CriticalSectionCallback csCallback;
+    private MutualExclusionClient client;
+    private LinkedBlockingQueue<String> inboundMsgBlockingQueue;
+    private LinkedBlockingQueue<OutboundMessage> outboundMsgBlockingQueue;
+    private boolean closeHandler;
 
     public RaAlgoWithCrOptimization(int me, int n, int fileId,
                                     Map<Integer, Connection> clientConnMap,
-                                    CriticalSectionCallback csCallback) {
+                                    MutualExclusionClient client,
+                                    LinkedBlockingQueue<String> inboundMsgBlockingQueue,
+                                    LinkedBlockingQueue<OutboundMessage> outboundMsgBlockingQueue) {
         this.me = me;
         this.n = n;
         this.fileId = fileId;
         this.clientConnMap = clientConnMap;
-        this.csCallback = csCallback;
+        this.client = client;
+        this.inboundMsgBlockingQueue = inboundMsgBlockingQueue;
+        this.outboundMsgBlockingQueue = outboundMsgBlockingQueue;
         authorization = new boolean[n];
         replyDeferred = new boolean[n];
+        logger = LogManager.getLogger("client" + me + "_logger");
+        new MessageHandler().start();
+    }
+
+    public void tearDown() {
+        closeHandler = true;
+    }
+
+    private void handleMsg(String msg) {
+        String[] split = msg.split(" ", 2);
+        switch (split[0]) {
+            case Constant.REQ_ME: {
+                // Format: fileId + Constant.REQ_ME + " " + ourSeqNum + " " + me + " " + requestNum
+                String[] split1 = split[1].split(" ");
+                int otherSeqNum = Integer.parseInt(split1[0]);
+                int otherClientId = Integer.parseInt(split1[1]);
+                int otherRequestNum = Integer.parseInt(split1[2]);
+                treatRequestMsg(otherSeqNum, otherClientId, otherRequestNum);
+                break;
+            }
+            case Constant.REPLY_ME: {
+                // Format: fileId + " " + Constant.REPLY_ME + " " + me
+                int otherClientId = Integer.parseInt(split[1]);
+                treatReplyMsg(otherClientId);
+                break;
+            }
+            case Constant.REPLY_SERVER_READ:
+            case Constant.INIT_RELEASE: {
+                releaseResource();
+                break;
+            }
+            case Constant.INIT_REQUEST: {
+                String[] split1 = split[1].split(" ");
+                requestResource(split1[0], Integer.parseInt(split1[1]));
+                break;
+            }
+        }
     }
 
     /**
      * handle request msg
-     * @param connection connection
      * @param theirSeqNum their sequence number
      * @param j their client id
      * @param otherReqNum their request number
      */
-    public void treatRequestMsg(Connection connection, int theirSeqNum, int j, int otherReqNum) {
+    private void treatRequestMsg(int theirSeqNum, int j, int otherReqNum) {
         System.out.println("otherRequestNum: " + otherReqNum + " file " + fileId + " -- request from client " + j +
                 " to " + me + " theirSeqNum is: " + theirSeqNum);
-        SemaUtil.wait(mutex);
         System.out.println("otherRequestNum: " + otherReqNum + " file " + fileId + " enter mutex position 1");
         highestSeqNum = Math.max(highestSeqNum, theirSeqNum);
         boolean ourPriority = theirSeqNum > ourSeqNum || (theirSeqNum == ourSeqNum && j > me);
@@ -79,7 +120,6 @@ public class RaAlgoWithCrOptimization {
         // defer sending reply msg to jth server
         if (using || (waiting && ourPriority)) {
             replyDeferred[j] = true;
-            deferMap.put(j, connection);
             System.out.println("otherRequestNum: " + otherReqNum + " file " + fileId +
                     " -- defer sending reply from client " + me + " to client " + j);
         }
@@ -88,8 +128,9 @@ public class RaAlgoWithCrOptimization {
         // because invoking treatReqMsg function, we don't have permission from j and have already sent consulting request to j
         if (!(using || waiting) || (waiting && !authorization[j] && !ourPriority)) {
             authorization[j] = false;
-            String reply = Constant.REPLY_ME + " " + me + " " + fileId;
-            connection.writeUTF(reply);
+            String reply = fileId + " " + Constant.REPLY_ME + " " + me;
+            OutboundMessage outboundMessage = new OutboundMessage(j, reply);
+            putIntoBlockingQueue(outboundMessage);
             System.out.println("otherRequestNum: " + otherReqNum + " file " + fileId +
                     " -- reply position 0: send mutual exclusion reply from client " + me + " to client " + j +
                     " content: " + reply);
@@ -99,8 +140,9 @@ public class RaAlgoWithCrOptimization {
         // however, we don't have priority, hence permission becomes invalid, we need to consult j immediately
         if (waiting & authorization[j] & !ourPriority) {
             authorization[j] = false;
-            String reply = Constant.REPLY_ME + " " + me + " " + fileId;
-            connection.writeUTF(reply);
+            String reply = fileId + " " + Constant.REPLY_ME + " " + me;
+            OutboundMessage outboundMessage = new OutboundMessage(j, reply);
+            putIntoBlockingQueue(outboundMessage);
             System.out.println("otherRequestNum: " + otherReqNum + " file " + fileId +
                     " -- reply position 1: send mutual exclusion reply from client " + me + " to client " + j +
                     "content: " + reply);
@@ -108,15 +150,14 @@ public class RaAlgoWithCrOptimization {
             if (!requestSentSet.contains(j)) {
                 requestSet.add(j);
                 requestSentSet.add(j);
-                String request = Constant.REQ_ME + " " + ourSeqNum + " " + me + " " + fileId + " " + otherReqNum;
-                clientConnMap.get(j).writeUTF(request);
+                String request = fileId + " " + Constant.REQ_ME + " " + ourSeqNum + " " + me + " " + otherReqNum;
+                OutboundMessage outboundMessage1 = new OutboundMessage(j, request);
+                putIntoBlockingQueue(outboundMessage1);
                 System.out.println("otherRequestNum: " + otherReqNum + " file " + fileId +
                         " -- request position 1: send mutual exclusion request from client " + me + " to client " + j +
                         "content: " + request);
             }
         }
-
-        SemaUtil.signal(mutex);
         System.out.println("otherRequestNum: " + otherReqNum + " file " + fileId + " exit mutex position 1, finish treatRequestMsg");
     }
 
@@ -124,9 +165,8 @@ public class RaAlgoWithCrOptimization {
      * handle reply msg
      * @param otherClientId their client id
      */
-    public void treatReplyMsg(int otherClientId) {
+    private void treatReplyMsg(int otherClientId) {
         System.out.println("file " + fileId + " -- Get the permission from client " + otherClientId + " to " + me);
-        SemaUtil.wait(mutex);
         System.out.println("file " + fileId + " enter into mutex position 2");
         authorization[otherClientId] = true;
         requestSet.remove(otherClientId);
@@ -135,12 +175,8 @@ public class RaAlgoWithCrOptimization {
             System.out.println("file " + fileId + " -- Get all permissions from other client, enter into critical section to " + fileId + " ourSeqNum: " + ourSeqNum);
             waiting = false;
             using = true;
-            SemaUtil.signal(mutex);
             System.out.println("file " + fileId + " exit mutex position 2");
-            csCallback.enterCS();
-        } else {
-            SemaUtil.signal(mutex);
-            System.out.println("file" + fileId + "--exit mutex position 2-1");
+            client.enterCS();
         }
     }
 
@@ -149,9 +185,8 @@ public class RaAlgoWithCrOptimization {
      * @param opType operation type
      * @param requestNum request number
      */
-    public void requestResource(String opType, int requestNum) {
+    private void requestResource(String opType, int requestNum) {
         System.out.println("Request " + requestNum + " file " + fileId + " current opType: " + opType);
-        SemaUtil.wait(mutex);
         waiting = true;
         ourSeqNum = highestSeqNum + 1;
         System.out.println("Request " + requestNum + " file " + fileId + " enter into mutex position 3 -- ourSeqNum: " + ourSeqNum + " client id: " + me);
@@ -163,11 +198,12 @@ public class RaAlgoWithCrOptimization {
                 if (!requestSentSet.contains(id)) {
                     requestSet.add(id);
                     requestSentSet.add(id);
-                    String request = Constant.REQ_ME + " " + ourSeqNum + " " + me + " " + fileId + " " + requestNum;
+                    String request = fileId + " " + Constant.REQ_ME + " " + ourSeqNum + " " + me + " " + requestNum;
+                    OutboundMessage outboundMessage = new OutboundMessage(id, request);
+                    putIntoBlockingQueue(outboundMessage);
                     System.out.println("Request " + requestNum + " file " + fileId + " -- request position 0, content: " + request +
                             " send mutual exclusion request from client " + me + " to client " + id
                             + " ourSeqNum: " + ourSeqNum + " highSeqNum: " + highestSeqNum);
-                    clientConnMap.get(id).writeUTF(request);
                 }
             }
         }
@@ -177,20 +213,15 @@ public class RaAlgoWithCrOptimization {
             System.out.println("Request " + requestNum + " file " + fileId + "--Time when we don't need to ask permission");
             waiting = false;
             using = true;
-            SemaUtil.signal(mutex);
             System.out.println("Request " + requestNum + " file " + fileId + " exit mutex position 3");
-            csCallback.enterCS();
-        } else {
-            SemaUtil.signal(mutex);
-            System.out.println("Request " + requestNum + " file " + fileId + " exit mutex position 3-1");
+            client.enterCS();
         }
     }
 
     /**
      * release resource after operation finishes
      */
-    public void releaseResource() {
-        SemaUtil.wait(mutex);
+    private void releaseResource() {
         System.out.println("file " + fileId + " enter mutex position 6");
         using = false;
         for (int i = 0; i < n; i++) {
@@ -198,21 +229,44 @@ public class RaAlgoWithCrOptimization {
                 replyDeferred[i] = false;
                 authorization[i] = false;
                 // send reply msg to other server/process
-                String reply = Constant.REPLY_ME + " " + me + " " + fileId;
-                Connection connection = deferMap.get(i);
-                connection.writeUTF(reply);
+                String reply = fileId + " " + Constant.REPLY_ME + " " + me;
+                OutboundMessage outboundMessage = new OutboundMessage(i, reply);
+                putIntoBlockingQueue(outboundMessage);
                 System.out.println("file " + fileId + " -- Send deferred reply to client " + i + " from " + me +
                         "content: " + reply);
             }
         }
 
-        // send all deferred reply, remove all sockets
-        deferMap.clear();
         // clear request sent set
         requestSentSet.clear();
-        SemaUtil.signal(mutex);
         System.out.println("file " + fileId + " exit mutex position 6");
-        // use callback to tell the client one operation finishes
-        csCallback.finishCS();
+        client.finishCS();
+    }
+
+    private void putIntoBlockingQueue(OutboundMessage msg) {
+        try {
+            outboundMsgBlockingQueue.put(msg);
+            logger.trace("insert outbound msg to blocking queue: " + msg);
+        } catch (InterruptedException ex) {
+            ex.printStackTrace();
+            logger.trace("failed inserting outbound msg: " + ex.toString());
+        }
+    }
+
+    private class MessageHandler extends Thread {
+        @Override
+        public void run() {
+            while (!closeHandler) {
+                try {
+                    String message = inboundMsgBlockingQueue.take();
+                    logger.trace("handle inbound msg: " + message);
+                    handleMsg(message);
+                } catch (InterruptedException ex) {
+                    ex.printStackTrace();
+                    logger.trace("failed handling inbound msg: " + ex.toString());
+                    break;
+                }
+            }
+        }
     }
 }

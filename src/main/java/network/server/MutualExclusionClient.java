@@ -1,11 +1,13 @@
 package network.server;
 
 import algorithm.LamportMutualExclusion;
+import algorithm.RaAlgoWithCrOptimization;
 import constant.Constant;
 import network.Connection;
 import network.OutboundMessage;
 import network.client.BaseClient;
 import network.handler.LamportMEHandler;
+import network.handler.MeClientRequestHandler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import util.FileUtil;
@@ -31,7 +33,7 @@ public class MutualExclusionClient extends BaseServer {
     private int fileNum;   // quantity of files
     private int opCount;   // operation count
     // we need to have the mutual exclusion algorithm object for each file
-    private List<LamportMutualExclusion> meAlgoList = new ArrayList<>();
+    private List<RaAlgoWithCrOptimization> meAlgoList = new ArrayList<>();
     private List<LinkedBlockingQueue<String>> blockingQueueList = new ArrayList<>();
     private Map<Integer, Connection> clientConnMap = new ConcurrentHashMap<>();
     private Map<Integer, Connection> serverConnMap = new ConcurrentHashMap<>();
@@ -39,7 +41,7 @@ public class MutualExclusionClient extends BaseServer {
     private int curOpCount = 0;
     private String opType;
     private int fileId;
-    private LamportMutualExclusion curMEAlgo;
+    private RaAlgoWithCrOptimization curMEAlgo;
     private LinkedBlockingQueue<String> curInboundMsgBlockingQueue;
     private Semaphore writeCountMutex = new Semaphore(1);
     private volatile int writeResponseCount;
@@ -78,7 +80,7 @@ public class MutualExclusionClient extends BaseServer {
                 break;
             }
         }
-        LamportMEHandler handler = new LamportMEHandler(connection, clientId, clientType + otherClientId, blockingQueueList, this);
+        MeClientRequestHandler handler = new MeClientRequestHandler(connection, clientId, clientType + otherClientId, blockingQueueList, this);
         handler.start();
     }
 
@@ -137,8 +139,8 @@ public class MutualExclusionClient extends BaseServer {
      */
     public void closeConnection() {
         logger.trace("close all connections");
-        for (LamportMutualExclusion lamportME: meAlgoList) {
-            lamportME.tearDown();
+        for (RaAlgoWithCrOptimization raAlgoWithCrOptimization: meAlgoList) {
+            raAlgoWithCrOptimization.tearDown();
         }
         try {
             for (Connection conn : serverConnMap.values()) {
@@ -166,7 +168,7 @@ public class MutualExclusionClient extends BaseServer {
         for (int i = 0; i < fileNum; i++) {
             LinkedBlockingQueue<String> inboundMsgBlockingQueue = new LinkedBlockingQueue<>();
             blockingQueueList.add(inboundMsgBlockingQueue);
-            meAlgoList.add(new LamportMutualExclusion(clientId, clientNum, i, clientConnMap, this, inboundMsgBlockingQueue, outboundMessageBlockingQueue));
+            meAlgoList.add(new RaAlgoWithCrOptimization(clientId, clientNum, i, clientConnMap, this, inboundMsgBlockingQueue, outboundMessageBlockingQueue));
         }
     }
 
