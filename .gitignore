@@ -6,3 +6,8 @@ backend*/
 *.txt
 *.pcapng
 *.class
+*.settings
+.classpath
+.factorypath
+.project
+log/

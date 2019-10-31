@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" monitorInterval="30">
+    <Properties>
+        <Property name="LOG_PATTERN">%d [%24F:%t:%L] - %m%n</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="console" target="SYSTEM_OUT" follow="true">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+        </Console>
+
+        <RollingFile name="client0_log" fileName="log/client0_log.log"
+                     filePattern="log/client0_log_%d{yyyy-MM-dd}.log">
+            <PatternLayout pattern="${LOG_PATTERN}" />
+            <Policies>
+                <SizeBasedTriggeringPolicy size="1024MB" />
+            </Policies>
+            <DefaultRolloverStrategy>
+                <Delete basePath="log/" maxDepth="2">
+                    <IfFileName glob="client0_log_*.log" />
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <RollingFile name="client1_log" fileName="log/client1_log.log"
+                     filePattern="log/client1_log_%d{yyyy-MM-dd}.log">
+            <PatternLayout pattern="${LOG_PATTERN}" />
+            <Policies>
+                <SizeBasedTriggeringPolicy size="1024MB" />
+            </Policies>
+            <DefaultRolloverStrategy>
+                <Delete basePath="log/" maxDepth="2">
+                    <IfFileName glob="client1_log_*.log" />
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <RollingFile name="client2_log" fileName="log/client2_log.log"
+                     filePattern="log/client2_log_%d{yyyy-MM-dd}.log">
+            <PatternLayout pattern="${LOG_PATTERN}" />
+            <Policies>
+                <SizeBasedTriggeringPolicy size="1024MB" />
+            </Policies>
+            <DefaultRolloverStrategy>
+                <Delete basePath="log/" maxDepth="2">
+                    <IfFileName glob="client2_log_*.log" />
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <RollingFile name="client3_log" fileName="log/client3_log.log"
+                     filePattern="log/client3_log_%d{yyyy-MM-dd}.log">
+            <PatternLayout pattern="${LOG_PATTERN}" />
+            <Policies>
+                <SizeBasedTriggeringPolicy size="1024MB" />
+            </Policies>
+            <DefaultRolloverStrategy>
+                <Delete basePath="log/" maxDepth="2">
+                    <IfFileName glob="client3_log_*.log" />
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <RollingFile name="client4_log" fileName="log/client4_log.log"
+                     filePattern="log/client4_log_%d{yyyy-MM-dd}.log">
+            <PatternLayout pattern="${LOG_PATTERN}" />
+            <Policies>
+                <SizeBasedTriggeringPolicy size="1024MB" />
+            </Policies>
+            <DefaultRolloverStrategy>
+                <Delete basePath="log/" maxDepth="2">
+                    <IfFileName glob="client4_log_*.log" />
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+    </Appenders>
+
+    <Loggers>
+        <Logger name="client0_logger" additivity="false">
+            <AppenderRef ref="client0_log" />
+        </Logger>
+        <Logger name="client1_logger" additivity="false">
+            <AppenderRef ref="client1_log" />
+        </Logger>
+        <Logger name="client2_logger" additivity="false">
+            <AppenderRef ref="client2_log" />
+        </Logger>
+        <Logger name="client3_logger" additivity="false">
+            <AppenderRef ref="client3_log" />
+        </Logger>
+        <Logger name="client4_logger" additivity="false">
+            <AppenderRef ref="client4_log" />
+        </Logger>
+        <Root level="all" >
+            <AppenderRef ref="console" />
+        </Root>
+    </Loggers>
+</Configuration>
