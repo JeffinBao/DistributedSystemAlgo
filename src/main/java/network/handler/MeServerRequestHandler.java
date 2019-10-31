@@ -29,10 +29,10 @@ public class MeServerRequestHandler extends RequestHandler {
                 break;
             }
             case Constant.REQ_SERVER_READ: {
-                // read request format: "req_server_read fileId fromClientX requestNumX"
+                // read request format: "fileId req_server_read fromClientX requestNumX"
                 String[] split1 = split[1].split(" ");
                 String fileName = "file" + split1[0] + ".txt";
-                response = Constant.REPLY_SERVER_READ + " " + split1[0] + " " + FileUtil.readLastLine(workingDir + "/" + fileName) + split[1];
+                response = split1[0] + " " + Constant.REPLY_SERVER_READ + " " + FileUtil.readLastLine(workingDir + "/" + fileName) + split[1];
                 break;
             }
             case Constant.REQ_SERVER_WRITE: {

@@ -29,6 +29,7 @@ public class Connection {
     public void writeUTF(String msg) {
         try {
             dos.writeUTF(msg);
+            dos.flush();
         } catch (IOException ex) {
             ex.printStackTrace();
         }

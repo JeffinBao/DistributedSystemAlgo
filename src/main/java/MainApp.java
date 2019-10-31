@@ -50,7 +50,7 @@ public class MainApp {
                 int clientNum = 5;
                 int serverNum = 3;
                 int fileNum = 2;
-                int opCount = 25000;
+                int opCount = 10000;
                 if (args.length == 6) {
                     clientNum = Integer.parseInt(args[2]);
                     serverNum = Integer.parseInt(args[3]);
