@@ -43,7 +43,7 @@ public class MeClientRequestHandler extends RequestHandler {
             }
             case Constant.REPLY_SERVER_WRITE: {
                 // Format: Constant.REPLY_SERVER_WRITE + " " + response
-                client.checkWriteComplete();
+                client.checkWriteFinish();
                 break;
             }
             default: {

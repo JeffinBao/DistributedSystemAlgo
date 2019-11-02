@@ -2,16 +2,7 @@ package network.server;
 
 import constant.Constant;
 import network.Connection;
-import network.handler.MeServerRequestHandler;
-import network.handler.RequestHandler;
-import network.server.BaseServer;
-import org.omg.PortableServer.POA;
-import util.FileUtil;
-
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.net.Socket;
+import network.handler.inbound.ServerInboundMsgHandler;
 
 /**
  * Author: JeffinBao
@@ -28,7 +19,7 @@ public class MutualExclusionServer extends BaseServer {
 
     @Override
     protected void startHandler(Connection connection, String clientType, int otherClientId) {
-        MeServerRequestHandler handler = new MeServerRequestHandler(connection, serverId, clientType + otherClientId);
+        ServerInboundMsgHandler handler = new ServerInboundMsgHandler(connection, serverId, clientType + otherClientId);
         handler.start();
     }
 }

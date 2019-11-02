@@ -1,4 +1,4 @@
-package network.handler;
+package network.handler.inbound;
 
 import constant.Constant;
 import network.Connection;
@@ -7,12 +7,12 @@ import util.FileUtil;
 /**
  * Author: JeffinBao
  * Date: 2019-09-17
- * Usage: server-side server request handler
+ * Usage: server-side inbound message handler. The message is the critical section request plus enquiry request from clients
  */
-public class MeServerRequestHandler extends RequestHandler {
+public class ServerInboundMsgHandler extends InboundMsgBaseHandler {
     private String workingDir;
 
-    public MeServerRequestHandler(Connection connection, int id, String name) {
+    public ServerInboundMsgHandler(Connection connection, int id, String name) {
         super(connection, id, name);
         workingDir = System.getProperty("user.dir") + "/" + Constant.BASE_DIRECTORY_PATH + id;
     }
@@ -29,10 +29,10 @@ public class MeServerRequestHandler extends RequestHandler {
                 break;
             }
             case Constant.REQ_SERVER_READ: {
-                // read request format: "fileId req_server_read fromClientX requestNumX"
+                // read request format: "req_server_read fileId fromClientX requestNumX"
                 String[] split1 = split[1].split(" ");
                 String fileName = "file" + split1[0] + ".txt";
-                response = split1[0] + " " + Constant.REPLY_SERVER_READ + " " + FileUtil.readLastLine(workingDir + "/" + fileName) + split[1];
+                response = Constant.REPLY_SERVER_READ + " " + split1[0] + " " + FileUtil.readLastLine(workingDir + "/" + fileName) + split[1];
                 break;
             }
             case Constant.REQ_SERVER_WRITE: {

@@ -17,7 +17,7 @@ tell application "iTerm2"
     repeat with i from 0 to 2
       tell application "System Events" to keystroke "d" using {command down}
       # delay is important, it lets the window initialize and be able to execute following command
-      delay 0.5
+      delay 1
       write text "cd ./src/main/java"
       write text "java -Dlog4j.configurationFile=../resources/log4j2.xml -cp ../../../lib/*:. MainApp server " & i
     end repeat

@@ -16,6 +16,7 @@ public class Constant {
     public static final String FAIL = "fail";
 
     public static final String EXIT = "exit";
+    public static final String EMPTY_STRING = "";
 
     public static final String REQ_ME = "req_me";
     public static final String REQ_SERVER_ENQUIRY = "req_server_enq";
@@ -26,8 +27,9 @@ public class Constant {
     public static final String REPLY_SERVER_READ = "reply_server_read";
     public static final String REPLY_SERVER_WRITE = "reply_server_write";
     public static final String RELEASE_ME = "release_me";
+    public static final String FINISH_READ = "finish_read";
+    public static final String FINISH_WRITE = "finish_write";
     public static final String INIT_REQUEST = "init_req";
-    public static final String INIT_RELEASE = "init_release";
 
     public static final String SERVER = "server";
     public static final String CLIENT = "client";

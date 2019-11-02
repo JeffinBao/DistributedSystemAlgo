@@ -102,8 +102,8 @@ public class LamportMutualExclusion {
                 treatReleaseMsg(otherClientId, otherSeqNum);
                 break;
             }
-            case Constant.REPLY_SERVER_READ:
-            case Constant.INIT_RELEASE: {
+            case Constant.FINISH_READ:
+            case Constant.FINISH_WRITE: {
                 releaseResource();
                 break;
             }

@@ -1,13 +1,13 @@
 package network.server;
 
-import algorithm.LamportMutualExclusion;
 import algorithm.RaAlgoWithCrOptimization;
 import constant.Constant;
 import network.Connection;
 import network.OutboundMessage;
 import network.client.BaseClient;
-import network.handler.LamportMEHandler;
-import network.handler.MeClientRequestHandler;
+import network.handler.inbound.ClientClientInboundMsgHandler;
+import network.handler.inbound.ClientServerInboundMsgHandler;
+import network.handler.outbound.ClientClientOutboundMsgHandler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import util.FileUtil;
@@ -45,8 +45,7 @@ public class MutualExclusionClient extends BaseServer {
     private LinkedBlockingQueue<String> curInboundMsgBlockingQueue;
     private Semaphore writeCountMutex = new Semaphore(1);
     private volatile int writeResponseCount;
-    private boolean closeHandler;
-    private LinkedBlockingQueue<OutboundMessage> outboundMessageBlockingQueue = new LinkedBlockingQueue<>();
+    private Map<Integer, LinkedBlockingQueue<String>> outboundBlockingQueueMap = new HashMap<>();
 
     public MutualExclusionClient(int clientId, int clientNum, int serverNum, int fileNum, int opCount) {
         super(Constant.BASE_CLIENT_PORT + clientId, Constant.CLIENT);
@@ -57,7 +56,7 @@ public class MutualExclusionClient extends BaseServer {
         this.opCount = opCount;
 
         logger = LogManager.getLogger("client" + clientId + "_logger");
-        new MessageSendHandler().start();
+//        new MessageSendHandler().start();
     }
 
     @Override
@@ -80,8 +79,14 @@ public class MutualExclusionClient extends BaseServer {
                 break;
             }
         }
-        MeClientRequestHandler handler = new MeClientRequestHandler(connection, clientId, clientType + otherClientId, blockingQueueList, this);
-        handler.start();
+        ClientClientInboundMsgHandler inboundMsgHandler =
+                new ClientClientInboundMsgHandler(connection, clientId, clientType + otherClientId + "--inbound", blockingQueueList);
+        inboundMsgHandler.start();
+        outboundBlockingQueueMap.put(otherClientId, new LinkedBlockingQueue<>());
+        ClientClientOutboundMsgHandler outboundMsgHandler =
+                new ClientClientOutboundMsgHandler(connection, clientId, clientType + otherClientId + "--outbound",
+                        outboundBlockingQueueMap.get(otherClientId));
+        outboundMsgHandler.start();
     }
 
     public void enterCS() {
@@ -92,7 +97,11 @@ public class MutualExclusionClient extends BaseServer {
         executeOperation();
     }
 
-    public void checkWriteComplete() {
+    public void finishReadOperation() {
+        putIntoInboundBlockingQueue(Constant.FINISH_READ);
+    }
+
+    public void checkWriteFinish() {
         SemaUtil.wait(writeCountMutex);
         writeResponseCount++;
         if (writeResponseCount == serverNum) {
@@ -100,7 +109,7 @@ public class MutualExclusionClient extends BaseServer {
             writeResponseCount = 0;
             SemaUtil.signal(writeCountMutex);
             // write operation to all replicas succeed, release resource
-            putIntoBlockingQueue(Constant.INIT_RELEASE);
+            putIntoInboundBlockingQueue(Constant.FINISH_WRITE);
         } else {
             SemaUtil.signal(writeCountMutex);
         }
@@ -119,7 +128,8 @@ public class MutualExclusionClient extends BaseServer {
             if (split1[0].startsWith(Constant.SERVER)) {
                 BaseClient client = new BaseClient(split2[0], port, clientId, Constant.CLIENT);
                 String threadName = Constant.SERVER + (port - Constant.BASE_SERVER_PORT);
-                LamportMEHandler handler = new LamportMEHandler(client.getConnection(), clientId, threadName, blockingQueueList, this);
+                ClientServerInboundMsgHandler handler =
+                        new ClientServerInboundMsgHandler(client.getConnection(), clientId, threadName, this);
                 handler.start();
                 serverConnMap.put(port - Constant.BASE_SERVER_PORT, client.getConnection());
             } else if (split1[0].startsWith(Constant.CLIENT) && ((port - Constant.BASE_CLIENT_PORT) > clientId)) {
@@ -127,8 +137,14 @@ public class MutualExclusionClient extends BaseServer {
                 // TODO current implementation is not a good way.
                 BaseClient client = new BaseClient(split2[0], port, clientId, Constant.CLIENT);
                 String threadName = Constant.CLIENT + (port - Constant.BASE_CLIENT_PORT);
-                LamportMEHandler handler = new LamportMEHandler(client.getConnection(), clientId, threadName, blockingQueueList, this);
-                handler.start();
+                ClientClientInboundMsgHandler inboundMsgHandler =
+                        new ClientClientInboundMsgHandler(client.getConnection(), clientId, threadName + "--inbound", blockingQueueList);
+                inboundMsgHandler.start();
+                outboundBlockingQueueMap.put(port - Constant.BASE_CLIENT_PORT, new LinkedBlockingQueue<>());
+                ClientClientOutboundMsgHandler outboundMsgHandler =
+                        new ClientClientOutboundMsgHandler(client.getConnection(), clientId, threadName + "--outbound",
+                                outboundBlockingQueueMap.get(port - Constant.BASE_CLIENT_PORT));
+                outboundMsgHandler.start();
                 clientConnMap.put(port - Constant.BASE_CLIENT_PORT, client.getConnection());
             }
         }
@@ -147,17 +163,15 @@ public class MutualExclusionClient extends BaseServer {
                 conn.writeUTF(Constant.EXIT);
                 conn.closeConnection();
             }
-            for (Connection conn : clientConnMap.values()) {
-                conn.writeUTF(Constant.EXIT);
-                conn.closeConnection();
+            for (int target : clientConnMap.keySet()) {
+                putIntoOutboundBlockingQueue(Constant.EXIT, target);
             }
         } catch (EOFException ex) {
             ex.printStackTrace();
         } catch (IOException ex) {
             ex.printStackTrace();
         }
-        // close MessageSendHandler
-        closeHandler = true;
+
     }
 
     /**
@@ -168,7 +182,7 @@ public class MutualExclusionClient extends BaseServer {
         for (int i = 0; i < fileNum; i++) {
             LinkedBlockingQueue<String> inboundMsgBlockingQueue = new LinkedBlockingQueue<>();
             blockingQueueList.add(inboundMsgBlockingQueue);
-            meAlgoList.add(new RaAlgoWithCrOptimization(clientId, clientNum, i, clientConnMap, this, inboundMsgBlockingQueue, outboundMessageBlockingQueue));
+            meAlgoList.add(new RaAlgoWithCrOptimization(clientId, clientNum, i, clientConnMap, this, inboundMsgBlockingQueue, outboundBlockingQueueMap));
         }
     }
 
@@ -202,7 +216,7 @@ public class MutualExclusionClient extends BaseServer {
         curMEAlgo = meAlgoList.get(fileId);
         curInboundMsgBlockingQueue = blockingQueueList.get(fileId);
         String reqMsg = Constant.INIT_REQUEST + " " + opType + " " + curOpCount;
-        putIntoBlockingQueue(reqMsg);
+        putIntoInboundBlockingQueue(reqMsg);
     }
 
     /**
@@ -240,7 +254,7 @@ public class MutualExclusionClient extends BaseServer {
         }
     }
 
-    private void putIntoBlockingQueue(String msg) {
+    private void putIntoInboundBlockingQueue(String msg) {
         try {
             curInboundMsgBlockingQueue.put(msg);
             logger.trace("inbound msg: " + msg);
@@ -250,21 +264,31 @@ public class MutualExclusionClient extends BaseServer {
         }
     }
 
-    private class MessageSendHandler extends Thread {
-        @Override
-        public void run() {
-            while (!closeHandler) {
-                try {
-                    OutboundMessage outboundMessage = outboundMessageBlockingQueue.take();
-                    clientConnMap.get(outboundMessage.getTarget()).writeUTF(outboundMessage.getMessage());
-                    logger.trace("sent outboundMsg: " + outboundMessage.getMessage() + " to client " + outboundMessage.getTarget());
-                } catch (InterruptedException ex) {
-                    ex.printStackTrace();
-                    logger.trace("failed sending outboundMsg: " + ex.toString());
-                    break;
-                }
-            }
+    private void putIntoOutboundBlockingQueue(String msg, int target) {
+        try {
+            outboundBlockingQueueMap.get(target).put(msg);
+            logger.trace("outbound msg: " + msg);
+        } catch (InterruptedException ex) {
+            ex.printStackTrace();
+            logger.trace("failed inserting outbound msg: " + ex.toString());
         }
     }
+
+//    private class MessageSendHandler extends Thread {
+//        @Override
+//        public void run() {
+//            while (!closeHandler) {
+//                try {
+//                    OutboundMessage outboundMessage = outboundMessageBlockingQueue.take();
+//                    clientConnMap.get(outboundMessage.getTarget()).writeUTF(outboundMessage.getMessage());
+//                    logger.trace("sent outboundMsg: " + outboundMessage.getMessage() + " to client " + outboundMessage.getTarget());
+//                } catch (InterruptedException ex) {
+//                    ex.printStackTrace();
+//                    logger.trace("failed sending outboundMsg: " + ex.toString());
+//                    break;
+//                }
+//            }
+//        }
+//    }
 
 }
