@@ -6,10 +6,8 @@ import network.OutboundMessage;
 import network.server.MutualExclusionClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import util.SemaUtil;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.Semaphore;
 
 /**
  * Author: JeffinBao
@@ -18,32 +16,28 @@ import java.util.concurrent.Semaphore;
  */
 public class LamportMutualExclusion {
     private static Logger logger = null;
-    private PriorityQueue<Request> requestPQ = new PriorityQueue<>();
     // me is the server/process id
-    // n is the number of server/process in the system
     // ourSeqNum is the sequence number of current server/process
     // highestSeqNum is the highest sequence number in the system
-    private int me, n;
-    private volatile int highestSeqNum;
-    private volatile boolean using = false;
-    private Map<Integer, Connection> clientConnMap;
-    // distinguish different file, each file should have a RAAlgoWithCROptimization object
+    private int me;
     private int fileId;
-    private Semaphore mutex = new Semaphore(1);
-    private List<Integer> requestDesIdList = new ArrayList<>();
-    private Request curRequest;
+    private Map<Integer, Connection> clientConnMap;
     private MutualExclusionClient client;
     private LinkedBlockingQueue<String> inboundMsgBlockingQueue;
     private LinkedBlockingQueue<OutboundMessage> outboundMsgBlockingQueue;
     private boolean closeHandler;
+    private volatile boolean using;
+    private volatile int highestSeqNum;
+    private Request curRequest;
+    private List<Integer> requestDesIdList = new ArrayList<>();
+    private PriorityQueue<Request> requestPQ = new PriorityQueue<>();
 
-    public LamportMutualExclusion(int me, int n, int fileId,
+    public LamportMutualExclusion(int me, int fileId,
                                   Map<Integer, Connection> clientConnMap,
                                   MutualExclusionClient client,
                                   LinkedBlockingQueue<String> inboundMsgBlockingQueue,
                                   LinkedBlockingQueue<OutboundMessage> outboundMsgBlockingQueue) {
         this.me = me;
-        this.n = n;
         this.fileId = fileId;
         this.clientConnMap = clientConnMap;
         this.client = client;
@@ -70,10 +64,17 @@ public class LamportMutualExclusion {
         }
     }
 
+    /**
+     * close handler
+     */
     public void tearDown() {
         closeHandler = true;
     }
 
+    /**
+     * handle inbound message retrieved from blocking queue
+     * @param msg inbound message
+     */
     private void handleMsg(String msg) {
         String[] split = msg.split(" ", 2);
         switch (split[0]) {
@@ -116,7 +117,9 @@ public class LamportMutualExclusion {
     }
 
     private void treatRequestMsg(int otherSeqNum, int j, int otherReqNum) {
+        String logBaseInfo = "otherRequestNum: " + otherReqNum + " file " + fileId;
         highestSeqNum = Math.max(highestSeqNum, otherSeqNum) + 1;
+        logger.trace(logBaseInfo + "--otherSeqNum: " + otherSeqNum + " highestSeqNum: " + highestSeqNum);
         Request otherReq = new Request(otherReqNum, otherSeqNum, j);
         requestPQ.offer(otherReq);
         checkIncomingMsgSeqNum(j, otherSeqNum);
@@ -126,17 +129,23 @@ public class LamportMutualExclusion {
             return;
         }
         String reply = fileId + " " + Constant.REPLY_ME + " " + highestSeqNum + " " + me;
+        logger.trace(logBaseInfo + "--reply from client: " + me + " to: " + j + " content: " + reply);
         OutboundMessage outboundMessage = new OutboundMessage(j, reply);
         putIntoBlockingQueue(outboundMessage);
     }
 
     private void treatReplyMsg(int otherClientId, int otherSeqNum) {
+        String logBaseInfo = "Request " + curRequest.getRequestNum() + " file " + fileId;
         highestSeqNum = Math.max(highestSeqNum, otherSeqNum) + 1;
+        logger.trace(logBaseInfo + "--reply from client " + otherClientId + " to " + me + " otherSeqNum: " + otherSeqNum +
+                " highestSeqNum: " + highestSeqNum);
         checkIncomingMsgSeqNum(otherClientId, otherSeqNum);
     }
 
     private void treatReleaseMsg(int otherClientId, int otherSeqNum) {
         highestSeqNum = Math.max(highestSeqNum, otherSeqNum) + 1;
+        logger.trace("release msg from client " + otherClientId + " to " + me +
+                " otherSeqNum: " + "highestSeqNum: " + highestSeqNum);
         requestPQ.poll();
         checkIncomingMsgSeqNum(otherClientId, otherSeqNum);
     }
@@ -144,6 +153,7 @@ public class LamportMutualExclusion {
     private void requestResource(String opType, int requestNum) {
         highestSeqNum++;
         String reqMsg = fileId + " " + Constant.REQ_ME + " " + highestSeqNum + " " + me + " " + requestNum;
+        logger.trace("Request " + requestNum + "--reqMsg: " + reqMsg);
         for (Integer clientId : clientConnMap.keySet()) {
             OutboundMessage outboundMessage = new OutboundMessage(clientId, reqMsg);
             putIntoBlockingQueue(outboundMessage);
@@ -155,14 +165,15 @@ public class LamportMutualExclusion {
 
     private void releaseResource() {
         using = false;
-        curRequest = null;
         highestSeqNum++;
         String releaseMsg = fileId + " " + Constant.RELEASE_ME + " " + highestSeqNum + " " + me;
+        logger.trace("Request " + curRequest.getRequestNum() + "--releaseMsg: " + releaseMsg);
         for (Integer clientId : clientConnMap.keySet()) {
             OutboundMessage outboundMessage = new OutboundMessage(clientId, releaseMsg);
             putIntoBlockingQueue(outboundMessage);
         }
         requestPQ.poll();
+        curRequest = null;
         client.finishCS();
     }
 
@@ -176,6 +187,8 @@ public class LamportMutualExclusion {
                 if (requestDesIdList.size() == 0 && !using &&
                         topReq.getRequestOriginId() == me &&
                         topReq.getSequenceNum() == curRequest.getSequenceNum()) {
+                    logger.trace("Request " + curRequest.getRequestNum() + " file " + fileId + "--receive msg from all sites and " +
+                            "find current request at the top of its request queue");
                     using = true;
                     client.enterCS();
                 }

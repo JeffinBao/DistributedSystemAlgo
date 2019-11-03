@@ -3,7 +3,6 @@ package network.server;
 import algorithm.RaAlgoWithCrOptimization;
 import constant.Constant;
 import network.Connection;
-import network.OutboundMessage;
 import network.client.BaseClient;
 import network.handler.inbound.ClientClientInboundMsgHandler;
 import network.handler.inbound.ClientServerInboundMsgHandler;
@@ -32,20 +31,19 @@ public class MutualExclusionClient extends BaseServer {
     private int serverNum; // quantity of server-side server
     private int fileNum;   // quantity of files
     private int opCount;   // operation count
+    private int curOpCount = 0; // current operation count
+    private String opType; // current operation type
+    private int fileId;    // current operation's targeting fileId
+    private String[] operations = {Constant.REQ_SERVER_ENQUIRY, Constant.REQ_SERVER_READ, Constant.REQ_SERVER_WRITE};
     // we need to have the mutual exclusion algorithm object for each file
     private List<RaAlgoWithCrOptimization> meAlgoList = new ArrayList<>();
-    private List<LinkedBlockingQueue<String>> blockingQueueList = new ArrayList<>();
     private Map<Integer, Connection> clientConnMap = new ConcurrentHashMap<>();
     private Map<Integer, Connection> serverConnMap = new ConcurrentHashMap<>();
-    private String[] operations = {Constant.REQ_SERVER_ENQUIRY, Constant.REQ_SERVER_READ, Constant.REQ_SERVER_WRITE};
-    private int curOpCount = 0;
-    private String opType;
-    private int fileId;
-    private RaAlgoWithCrOptimization curMEAlgo;
     private LinkedBlockingQueue<String> curInboundMsgBlockingQueue;
+    private List<LinkedBlockingQueue<String>> blockingQueueList = new ArrayList<>();
+    private Map<Integer, LinkedBlockingQueue<String>> outboundBlockingQueueMap = new HashMap<>();
     private Semaphore writeCountMutex = new Semaphore(1);
     private volatile int writeResponseCount;
-    private Map<Integer, LinkedBlockingQueue<String>> outboundBlockingQueueMap = new HashMap<>();
 
     public MutualExclusionClient(int clientId, int clientNum, int serverNum, int fileNum, int opCount) {
         super(Constant.BASE_CLIENT_PORT + clientId, Constant.CLIENT);
@@ -56,7 +54,6 @@ public class MutualExclusionClient extends BaseServer {
         this.opCount = opCount;
 
         logger = LogManager.getLogger("client" + clientId + "_logger");
-//        new MessageSendHandler().start();
     }
 
     @Override
@@ -89,32 +86,6 @@ public class MutualExclusionClient extends BaseServer {
         outboundMsgHandler.start();
     }
 
-    public void enterCS() {
-        sendReq(opType);
-    }
-
-    public void finishCS() {
-        executeOperation();
-    }
-
-    public void finishReadOperation() {
-        putIntoInboundBlockingQueue(Constant.FINISH_READ);
-    }
-
-    public void checkWriteFinish() {
-        SemaUtil.wait(writeCountMutex);
-        writeResponseCount++;
-        if (writeResponseCount == serverNum) {
-            // reset count
-            writeResponseCount = 0;
-            SemaUtil.signal(writeCountMutex);
-            // write operation to all replicas succeed, release resource
-            putIntoInboundBlockingQueue(Constant.FINISH_WRITE);
-        } else {
-            SemaUtil.signal(writeCountMutex);
-        }
-    }
-
     /**
      * init all connections with server-side servers and client-side servers
      * note: only connect to client-side servers which have larger clientId
@@ -125,26 +96,31 @@ public class MutualExclusionClient extends BaseServer {
             String[] split1 = info.split(",");
             String[] split2 = split1[1].split(":");
             int port = Integer.parseInt(split2[1]);
+
             if (split1[0].startsWith(Constant.SERVER)) {
                 BaseClient client = new BaseClient(split2[0], port, clientId, Constant.CLIENT);
                 String threadName = Constant.SERVER + (port - Constant.BASE_SERVER_PORT);
+
                 ClientServerInboundMsgHandler handler =
                         new ClientServerInboundMsgHandler(client.getConnection(), clientId, threadName, this);
                 handler.start();
+
                 serverConnMap.put(port - Constant.BASE_SERVER_PORT, client.getConnection());
             } else if (split1[0].startsWith(Constant.CLIENT) && ((port - Constant.BASE_CLIENT_PORT) > clientId)) {
-                // TODO only connect to bigger "port" number, avoid duplicate connection
-                // TODO current implementation is not a good way.
+                // only connect to bigger "port" number, avoid duplicate connection
                 BaseClient client = new BaseClient(split2[0], port, clientId, Constant.CLIENT);
                 String threadName = Constant.CLIENT + (port - Constant.BASE_CLIENT_PORT);
+
                 ClientClientInboundMsgHandler inboundMsgHandler =
                         new ClientClientInboundMsgHandler(client.getConnection(), clientId, threadName + "--inbound", blockingQueueList);
                 inboundMsgHandler.start();
+
                 outboundBlockingQueueMap.put(port - Constant.BASE_CLIENT_PORT, new LinkedBlockingQueue<>());
                 ClientClientOutboundMsgHandler outboundMsgHandler =
                         new ClientClientOutboundMsgHandler(client.getConnection(), clientId, threadName + "--outbound",
                                 outboundBlockingQueueMap.get(port - Constant.BASE_CLIENT_PORT));
                 outboundMsgHandler.start();
+
                 clientConnMap.put(port - Constant.BASE_CLIENT_PORT, client.getConnection());
             }
         }
@@ -182,7 +158,9 @@ public class MutualExclusionClient extends BaseServer {
         for (int i = 0; i < fileNum; i++) {
             LinkedBlockingQueue<String> inboundMsgBlockingQueue = new LinkedBlockingQueue<>();
             blockingQueueList.add(inboundMsgBlockingQueue);
-            meAlgoList.add(new RaAlgoWithCrOptimization(clientId, clientNum, i, clientConnMap, this, inboundMsgBlockingQueue, outboundBlockingQueueMap));
+            RaAlgoWithCrOptimization raAlgo =
+                    new RaAlgoWithCrOptimization(clientId, clientNum, i, clientConnMap, this, inboundMsgBlockingQueue, outboundBlockingQueueMap);
+            meAlgoList.add(raAlgo);
         }
     }
 
@@ -199,6 +177,7 @@ public class MutualExclusionClient extends BaseServer {
     public void executeOperation() {
         if (curOpCount >= opCount) {
             curOpCount = 0;
+            System.out.println("finish all " + opCount + " operations");
             return;
         }
         int opId = Util.genRandom(3);
@@ -213,10 +192,49 @@ public class MutualExclusionClient extends BaseServer {
             return;
         }
 
-        curMEAlgo = meAlgoList.get(fileId);
         curInboundMsgBlockingQueue = blockingQueueList.get(fileId);
-        String reqMsg = Constant.INIT_REQUEST + " " + opType + " " + curOpCount;
+        String reqMsg = Constant.INIT_REQUEST + " " + curOpCount;
         putIntoInboundBlockingQueue(reqMsg);
+    }
+
+    /**
+     * enter critical section
+     */
+    public void enterCS() {
+        sendReq(opType);
+    }
+
+    /**
+     * finish critical section, execute next operation
+     */
+    public void finishCS() {
+        executeOperation();
+    }
+
+    /**
+     * finish read operation, prepare to release resources
+     */
+    public void finishReadOperation() {
+        putIntoInboundBlockingQueue(Constant.FINISH_READ);
+    }
+
+    /**
+     * check whether all write operations finish,
+     * if not, wait for next response,
+     * if yes, prepare to release resources
+     */
+    public void checkWriteFinish() {
+        SemaUtil.wait(writeCountMutex);
+        writeResponseCount++;
+        if (writeResponseCount == serverNum) {
+            // reset count
+            writeResponseCount = 0;
+            SemaUtil.signal(writeCountMutex);
+            // write operation to all replicas succeed, release resource
+            putIntoInboundBlockingQueue(Constant.FINISH_WRITE);
+        } else {
+            SemaUtil.signal(writeCountMutex);
+        }
     }
 
     /**
@@ -254,6 +272,11 @@ public class MutualExclusionClient extends BaseServer {
         }
     }
 
+    /**
+     * put message into blocking queue, wait for mutual exclusion
+     * algorithm's blocking queue to handle the message
+     * @param msg inbound message
+     */
     private void putIntoInboundBlockingQueue(String msg) {
         try {
             curInboundMsgBlockingQueue.put(msg);
@@ -264,6 +287,12 @@ public class MutualExclusionClient extends BaseServer {
         }
     }
 
+    /**
+     * put message into blocking queue, wait for client-client outbound handler's
+     * blocking queue to handle the message
+     * @param msg outbound message
+     * @param target target client id
+     */
     private void putIntoOutboundBlockingQueue(String msg, int target) {
         try {
             outboundBlockingQueueMap.get(target).put(msg);
@@ -273,22 +302,4 @@ public class MutualExclusionClient extends BaseServer {
             logger.trace("failed inserting outbound msg: " + ex.toString());
         }
     }
-
-//    private class MessageSendHandler extends Thread {
-//        @Override
-//        public void run() {
-//            while (!closeHandler) {
-//                try {
-//                    OutboundMessage outboundMessage = outboundMessageBlockingQueue.take();
-//                    clientConnMap.get(outboundMessage.getTarget()).writeUTF(outboundMessage.getMessage());
-//                    logger.trace("sent outboundMsg: " + outboundMessage.getMessage() + " to client " + outboundMessage.getTarget());
-//                } catch (InterruptedException ex) {
-//                    ex.printStackTrace();
-//                    logger.trace("failed sending outboundMsg: " + ex.toString());
-//                    break;
-//                }
-//            }
-//        }
-//    }
-
 }

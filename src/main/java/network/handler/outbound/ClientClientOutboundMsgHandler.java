@@ -27,7 +27,7 @@ public class ClientClientOutboundMsgHandler extends OutboundMsgBaseHandler {
         String outboundMessage = "";
         try {
             outboundMessage = blockingQueue.take();
-            logger.trace("sent outboundMsg: " + outboundMessage + " to client " + id);
+            logger.trace("sent outboundMsg: " + outboundMessage);
         } catch (InterruptedException ex) {
             ex.printStackTrace();
             logger.trace("failed sending outboundMsg: " + ex.toString());
