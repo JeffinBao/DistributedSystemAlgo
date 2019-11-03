@@ -1,6 +1,7 @@
 package algorithm;
 
 import constant.Constant;
+import model.Request;
 import network.Connection;
 import network.server.MutualExclusionClient;
 import java.util.*;

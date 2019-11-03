@@ -1,5 +1,6 @@
 package algorithm;
 
+import model.Request;
 import org.junit.Assert;
 import org.junit.Test;
 

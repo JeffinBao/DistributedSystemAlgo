@@ -1,4 +1,4 @@
-package algorithm;
+package model;
 
 /**
  * Author: JeffinBao
@@ -10,7 +10,7 @@ public class Request implements Comparable<Request> {
     private int sequenceNum;
     private int requestOriginId;
 
-    Request(int requestNum, int sequenceNum, int requestOriginId) {
+    public Request(int requestNum, int sequenceNum, int requestOriginId) {
         this.requestNum = requestNum;
         this.sequenceNum = sequenceNum;
         this.requestOriginId = requestOriginId;
