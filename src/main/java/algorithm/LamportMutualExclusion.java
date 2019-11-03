@@ -2,10 +2,7 @@ package algorithm;
 
 import constant.Constant;
 import network.Connection;
-import network.OutboundMessage;
 import network.server.MutualExclusionClient;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -14,18 +11,9 @@ import java.util.concurrent.LinkedBlockingQueue;
  * Date: 2019-10-12
  * Usage: Lamport Distributed Mutual Exclusion algorithm with optimization
  */
-public class LamportMutualExclusion {
-    private static Logger logger = null;
+public class LamportMutualExclusion extends MutexBase {
     // me is the server/process id
-    // ourSeqNum is the sequence number of current server/process
     // highestSeqNum is the highest sequence number in the system
-    private int me;
-    private int fileId;
-    private Map<Integer, Connection> clientConnMap;
-    private MutualExclusionClient client;
-    private LinkedBlockingQueue<String> inboundMsgBlockingQueue;
-    private LinkedBlockingQueue<OutboundMessage> outboundMsgBlockingQueue;
-    private boolean closeHandler;
     private volatile boolean using;
     private volatile int highestSeqNum;
     private Request curRequest;
@@ -36,46 +24,15 @@ public class LamportMutualExclusion {
                                   Map<Integer, Connection> clientConnMap,
                                   MutualExclusionClient client,
                                   LinkedBlockingQueue<String> inboundMsgBlockingQueue,
-                                  LinkedBlockingQueue<OutboundMessage> outboundMsgBlockingQueue) {
-        this.me = me;
-        this.fileId = fileId;
-        this.clientConnMap = clientConnMap;
-        this.client = client;
-        this.inboundMsgBlockingQueue = inboundMsgBlockingQueue;
-        this.outboundMsgBlockingQueue = outboundMsgBlockingQueue;
-        logger = LogManager.getLogger("client" + me + "_logger");
-        new MessageHandler().start();
-    }
-
-    private class MessageHandler extends Thread {
-        @Override
-        public void run() {
-            while (!closeHandler) {
-                try {
-                    String message = inboundMsgBlockingQueue.take();
-                    logger.trace("handle inbound msg: " + message);
-                    handleMsg(message);
-                } catch (InterruptedException ex) {
-                    ex.printStackTrace();
-                    logger.trace("failed handling inbound msg: " + ex.toString());
-                    break;
-                }
-            }
-        }
-    }
-
-    /**
-     * close handler
-     */
-    public void tearDown() {
-        closeHandler = true;
+                                  Map<Integer, LinkedBlockingQueue<String>> outboundBlockingQueueMap) {
+        super(me, fileId, clientConnMap, client, inboundMsgBlockingQueue, outboundBlockingQueueMap);
     }
 
     /**
      * handle inbound message retrieved from blocking queue
      * @param msg inbound message
      */
-    private void handleMsg(String msg) {
+    protected void handleMsg(String msg) {
         String[] split = msg.split(" ", 2);
         switch (split[0]) {
             case Constant.REQ_ME: {
@@ -109,13 +66,18 @@ public class LamportMutualExclusion {
                 break;
             }
             case Constant.INIT_REQUEST: {
-                String[] split1 = split[1].split(" ");
-                requestResource(split1[0], Integer.parseInt(split1[1]));
+                requestResource(Integer.parseInt(split[1]));
                 break;
             }
         }
     }
 
+    /**
+     * handle request message from other clients
+     * @param otherSeqNum other client's sequence number
+     * @param j other client's id
+     * @param otherReqNum other client's request number
+     */
     private void treatRequestMsg(int otherSeqNum, int j, int otherReqNum) {
         String logBaseInfo = "otherRequestNum: " + otherReqNum + " file " + fileId;
         highestSeqNum = Math.max(highestSeqNum, otherSeqNum) + 1;
@@ -130,53 +92,73 @@ public class LamportMutualExclusion {
         }
         String reply = fileId + " " + Constant.REPLY_ME + " " + highestSeqNum + " " + me;
         logger.trace(logBaseInfo + "--reply from client: " + me + " to: " + j + " content: " + reply);
-        OutboundMessage outboundMessage = new OutboundMessage(j, reply);
-        putIntoBlockingQueue(outboundMessage);
+        putIntoOutboundBlockingQueue(j, reply);
     }
 
+    /**
+     * handle reply message from other clients
+     * @param otherClientId other client's id
+     * @param otherSeqNum other client's sequence number
+     */
     private void treatReplyMsg(int otherClientId, int otherSeqNum) {
-        String logBaseInfo = "Request " + curRequest.getRequestNum() + " file " + fileId;
+        String logBaseInfo = "file " + fileId;
         highestSeqNum = Math.max(highestSeqNum, otherSeqNum) + 1;
         logger.trace(logBaseInfo + "--reply from client " + otherClientId + " to " + me + " otherSeqNum: " + otherSeqNum +
                 " highestSeqNum: " + highestSeqNum);
         checkIncomingMsgSeqNum(otherClientId, otherSeqNum);
     }
 
+    /**
+     * handle release message from other clients
+     * @param otherClientId other client's id
+     * @param otherSeqNum other sequence number
+     */
     private void treatReleaseMsg(int otherClientId, int otherSeqNum) {
         highestSeqNum = Math.max(highestSeqNum, otherSeqNum) + 1;
-        logger.trace("release msg from client " + otherClientId + " to " + me +
+        logger.trace("file " + fileId + "--release msg from client " + otherClientId + " to " + me +
                 " otherSeqNum: " + "highestSeqNum: " + highestSeqNum);
         requestPQ.poll();
         checkIncomingMsgSeqNum(otherClientId, otherSeqNum);
     }
 
-    private void requestResource(String opType, int requestNum) {
+    /**
+     * request resource from other clients
+     * @param requestNum current request number
+     */
+    private void requestResource(int requestNum) {
         highestSeqNum++;
         String reqMsg = fileId + " " + Constant.REQ_ME + " " + highestSeqNum + " " + me + " " + requestNum;
         logger.trace("Request " + requestNum + "--reqMsg: " + reqMsg);
-        for (Integer clientId : clientConnMap.keySet()) {
-            OutboundMessage outboundMessage = new OutboundMessage(clientId, reqMsg);
-            putIntoBlockingQueue(outboundMessage);
+        for (int clientId : clientConnMap.keySet()) {
+            putIntoOutboundBlockingQueue(clientId, reqMsg);
             requestDesIdList.add(clientId);
         }
         curRequest = new Request(requestNum, highestSeqNum, me);
         requestPQ.offer(curRequest);
     }
 
+    /**
+     * release resource
+     */
     private void releaseResource() {
         using = false;
         highestSeqNum++;
         String releaseMsg = fileId + " " + Constant.RELEASE_ME + " " + highestSeqNum + " " + me;
         logger.trace("Request " + curRequest.getRequestNum() + "--releaseMsg: " + releaseMsg);
-        for (Integer clientId : clientConnMap.keySet()) {
-            OutboundMessage outboundMessage = new OutboundMessage(clientId, releaseMsg);
-            putIntoBlockingQueue(outboundMessage);
+        for (int clientId : clientConnMap.keySet()) {
+            putIntoOutboundBlockingQueue(clientId, releaseMsg);
         }
         requestPQ.poll();
         curRequest = null;
         client.finishCS();
     }
 
+    /**
+     * check inbound message sequence num,
+     * whether current request can enter critical section
+     * @param otherClientId other client's id
+     * @param otherSeqNum other client's sequence number
+     */
     private void checkIncomingMsgSeqNum(int otherClientId, int otherSeqNum) {
         // receiving msg with higher timestamp than current request
         if (curRequest != null && otherSeqNum > curRequest.getSequenceNum()) {
@@ -196,10 +178,15 @@ public class LamportMutualExclusion {
         }
     }
 
-    private void putIntoBlockingQueue(OutboundMessage msg) {
+    /**
+     * insert outbound message to client-client handler's blocking queue
+     * @param target target client id
+     * @param msg outbound message
+     */
+    private void putIntoOutboundBlockingQueue(int target, String msg) {
         try {
-            outboundMsgBlockingQueue.put(msg);
-            logger.trace("insert outbound msg to blocking queue: " + msg);
+            outboundBlockingQueueMap.get(target).put(msg);
+            logger.trace("insert outbound msg and prepare to send to client " + target + " msg: " + msg);
         } catch (InterruptedException ex) {
             ex.printStackTrace();
             logger.trace("failed inserting outbound msg: " + ex.toString());

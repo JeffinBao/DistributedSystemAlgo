@@ -1,5 +1,7 @@
 package network.server;
 
+import algorithm.LamportMutualExclusion;
+import algorithm.MutexBase;
 import algorithm.RaAlgoWithCrOptimization;
 import constant.Constant;
 import network.Connection;
@@ -36,7 +38,7 @@ public class MutualExclusionClient extends BaseServer {
     private int fileId;    // current operation's targeting fileId
     private String[] operations = {Constant.REQ_SERVER_ENQUIRY, Constant.REQ_SERVER_READ, Constant.REQ_SERVER_WRITE};
     // we need to have the mutual exclusion algorithm object for each file
-    private List<RaAlgoWithCrOptimization> meAlgoList = new ArrayList<>();
+    private List<MutexBase> meAlgoList = new ArrayList<>();
     private Map<Integer, Connection> clientConnMap = new ConcurrentHashMap<>();
     private Map<Integer, Connection> serverConnMap = new ConcurrentHashMap<>();
     private LinkedBlockingQueue<String> curInboundMsgBlockingQueue;
@@ -131,8 +133,8 @@ public class MutualExclusionClient extends BaseServer {
      */
     public void closeConnection() {
         logger.trace("close all connections");
-        for (RaAlgoWithCrOptimization raAlgoWithCrOptimization: meAlgoList) {
-            raAlgoWithCrOptimization.tearDown();
+        for (MutexBase mutexBase: meAlgoList) {
+            mutexBase.tearDown();
         }
         try {
             for (Connection conn : serverConnMap.values()) {
@@ -158,9 +160,9 @@ public class MutualExclusionClient extends BaseServer {
         for (int i = 0; i < fileNum; i++) {
             LinkedBlockingQueue<String> inboundMsgBlockingQueue = new LinkedBlockingQueue<>();
             blockingQueueList.add(inboundMsgBlockingQueue);
-            RaAlgoWithCrOptimization raAlgo =
-                    new RaAlgoWithCrOptimization(clientId, clientNum, i, clientConnMap, this, inboundMsgBlockingQueue, outboundBlockingQueueMap);
-            meAlgoList.add(raAlgo);
+            MutexBase mutexBase =
+                    new LamportMutualExclusion(clientId, i, clientConnMap, this, inboundMsgBlockingQueue, outboundBlockingQueueMap);
+            meAlgoList.add(mutexBase);
         }
     }
 

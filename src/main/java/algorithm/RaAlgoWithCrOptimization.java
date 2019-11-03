@@ -3,9 +3,6 @@ package algorithm;
 import constant.Constant;
 import network.Connection;
 import network.server.MutualExclusionClient;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -15,13 +12,12 @@ import java.util.concurrent.LinkedBlockingQueue;
  * Usage: Ricart-Agrawala Distributed Mutual Exclusion Algorithm with Optimization
  *        proposed by Carvalho-Roucairol
  */
-public class RaAlgoWithCrOptimization {
-    private static Logger logger = null;
+public class RaAlgoWithCrOptimization extends MutexBase {
     // me is the server/process id
     // n is the number of server/process in the system
     // ourSeqNum is the sequence number of current server/process
     // highestSeqNum is the highest sequence number in the system
-    private int me, n;
+    private int n;
     private volatile int ourSeqNum;
     private volatile int highestSeqNum;
     private int curRequestNum;
@@ -42,44 +38,23 @@ public class RaAlgoWithCrOptimization {
     // store the requests "me" has sent to other clients. It is used for avoiding duplicate request sent
     // to other clients.
     private Set<Integer> requestSentSet = new HashSet<>();
-    private Map<Integer, Connection> clientConnMap;
-    // distinguish different file, each file should have a RAAlgoWithCROptimization object
-    private int fileId;
-    private MutualExclusionClient client;
-    private LinkedBlockingQueue<String> inboundMsgBlockingQueue;
-    private Map<Integer, LinkedBlockingQueue<String>> outboundBlockingQueueMap;
-    private boolean closeHandler;
 
     public RaAlgoWithCrOptimization(int me, int n, int fileId,
                                     Map<Integer, Connection> clientConnMap,
                                     MutualExclusionClient client,
                                     LinkedBlockingQueue<String> inboundMsgBlockingQueue,
                                     Map<Integer, LinkedBlockingQueue<String>> outboundBlockingQueueMap) {
-        this.me = me;
+        super(me, fileId, clientConnMap, client, inboundMsgBlockingQueue, outboundBlockingQueueMap);
         this.n = n;
-        this.fileId = fileId;
-        this.clientConnMap = clientConnMap;
-        this.client = client;
-        this.inboundMsgBlockingQueue = inboundMsgBlockingQueue;
-        this.outboundBlockingQueueMap = outboundBlockingQueueMap;
         authorization = new boolean[n];
         replyDeferred = new boolean[n];
-        logger = LogManager.getLogger("client" + me + "_logger");
-        new MessageHandler().start();
-    }
-
-    /**
-     * close handler
-     */
-    public void tearDown() {
-        closeHandler = true;
     }
 
     /**
      * handle inbound message retrieved from blocking queue
      * @param msg inbound message
      */
-    private void handleMsg(String msg) {
+    protected void handleMsg(String msg) {
         String[] split = msg.split(" ", 2);
         switch (split[0]) {
             case Constant.REQ_ME: {
@@ -238,23 +213,6 @@ public class RaAlgoWithCrOptimization {
         } catch (InterruptedException ex) {
             ex.printStackTrace();
             logger.trace("failed inserting outbound msg: " + ex.toString());
-        }
-    }
-
-    private class MessageHandler extends Thread {
-        @Override
-        public void run() {
-            while (!closeHandler) {
-                try {
-                    String message = inboundMsgBlockingQueue.take();
-                    logger.trace("handle inbound msg: " + message);
-                    handleMsg(message);
-                } catch (InterruptedException ex) {
-                    ex.printStackTrace();
-                    logger.trace("failed handling inbound msg: " + ex.toString());
-                    break;
-                }
-            }
         }
     }
 }
