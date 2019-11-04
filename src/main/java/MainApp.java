@@ -1,6 +1,8 @@
 import constant.Constant;
 import network.server.MutualExclusionClient;
 import network.server.MutualExclusionServer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import util.FileUtil;
 
 import java.io.File;
@@ -12,6 +14,7 @@ import java.util.Scanner;
  * Usage: Main entrance to run different distributed algorithms
  */
 public class MainApp {
+    private static Logger logger;
     public static void main(String[] args) {
         String serverType = args[0];
         switch (serverType) {
@@ -47,6 +50,8 @@ public class MainApp {
             }
             case Constant.CLIENT: {
                 int clientId = Integer.parseInt(args[1]);
+                logger = LogManager.getLogger("client" + clientId + "_logger");
+                String algoType = args[2];
                 int clientNum = 5;
                 int serverNum = 3;
                 int fileNum = 2;
@@ -67,20 +72,27 @@ public class MainApp {
                 }
 
                 clientSideServer.initConnection();
-                clientSideServer.initMEList();
+                clientSideServer.setMEList(algoType);
+//                clientSideServer.initMEList();
 
+                long startTimestamp = Long.MIN_VALUE;
                 while (true) {
                     command = scanner.nextLine();
                     if (command.equals(Constant.COMMAND_RECONNECT)) {
                         clientSideServer.closeConnection();
-                        clientSideServer.clearMEList();
+//                        clientSideServer.clearMEList();
 
                         clientSideServer.initConnection();
-                        clientSideServer.initMEList();
+//                        clientSideServer.initMEList();
                     } else if (command.equals(Constant.COMMAND_CLOSE)) {
+                        logger.trace("total inbound msg count: " + clientSideServer.allMsgCount(Constant.COUNT_INBOUND_MSG));
+                        logger.trace("total outbound msg count: " + clientSideServer.allMsgCount(Constant.COUNT_OUTBOUND_MSG));
                         clientSideServer.closeConnection();
                         break;
                     } else {
+                        startTimestamp = System.currentTimeMillis();
+                        System.out.println("start running algorithm: " + algoType);
+                        clientSideServer.setStartTimestamp(startTimestamp);
                         clientSideServer.executeOperation();
                     }
                 }

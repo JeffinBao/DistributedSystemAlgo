@@ -38,4 +38,10 @@ public class Constant {
     public static final String COMMAND_RECONNECT = "reconnect";
     public static final String COMMAND_INVALID = "invalid command";
     public static final String COMMAND_CLOSE = "close";
+
+    public static final String ALGO_RA_WITH_OPTIMIZATION = "ra_with_optimization";
+    public static final String ALGO_LAMPORT = "lamport";
+
+    public static final String COUNT_INBOUND_MSG = "count_inbound_msg";
+    public static final String COUNT_OUTBOUND_MSG = "count_outbound_msg";
 }

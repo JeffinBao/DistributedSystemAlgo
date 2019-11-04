@@ -46,6 +46,7 @@ public class MutualExclusionClient extends BaseServer {
     private Map<Integer, LinkedBlockingQueue<String>> outboundBlockingQueueMap = new HashMap<>();
     private Semaphore writeCountMutex = new Semaphore(1);
     private volatile int writeResponseCount;
+    private long startTimestamp;
 
     public MutualExclusionClient(int clientId, int clientNum, int serverNum, int fileNum, int opCount) {
         super(Constant.BASE_CLIENT_PORT + clientId, Constant.CLIENT);
@@ -152,17 +153,40 @@ public class MutualExclusionClient extends BaseServer {
 
     }
 
+    public void setStartTimestamp(long timestamp) {
+        startTimestamp = timestamp;
+    }
+
     /**
-     * init mutual exclusion algorithm list
-     * each file has its own mutual exclusion algorithm object
+     * set mutual exclusion algorithm object list
+     * @param type mutual exclusion algorithm type
      */
-    public void initMEList() {
-        for (int i = 0; i < fileNum; i++) {
-            LinkedBlockingQueue<String> inboundMsgBlockingQueue = new LinkedBlockingQueue<>();
-            blockingQueueList.add(inboundMsgBlockingQueue);
-            MutexBase mutexBase =
-                    new LamportMutualExclusion(clientId, i, clientConnMap, this, inboundMsgBlockingQueue, outboundBlockingQueueMap);
-            meAlgoList.add(mutexBase);
+    public void setMEList(String type) {
+        switch (type) {
+            case Constant.ALGO_LAMPORT: {
+                clearMEList();
+                for (int i = 0; i < fileNum; i++) {
+                    LinkedBlockingQueue<String> inboundMsgBlockingQueue = new LinkedBlockingQueue<>();
+                    blockingQueueList.add(inboundMsgBlockingQueue);
+                    MutexBase mutexBase =
+                            new LamportMutualExclusion(clientId, i, clientConnMap, this, inboundMsgBlockingQueue, outboundBlockingQueueMap);
+                    meAlgoList.add(mutexBase);
+                }
+                break;
+            }
+            case Constant.ALGO_RA_WITH_OPTIMIZATION: {
+                clearMEList();
+                for (int i = 0; i < fileNum; i++) {
+                    LinkedBlockingQueue<String> inboundMsgBlockingQueue = new LinkedBlockingQueue<>();
+                    blockingQueueList.add(inboundMsgBlockingQueue);
+                    MutexBase mutexBase =
+                            new RaAlgoWithCrOptimization(clientId, clientNum, i, clientConnMap, this, inboundMsgBlockingQueue, outboundBlockingQueueMap);
+                    meAlgoList.add(mutexBase);
+                }
+                break;
+            }
+            default:
+                break;
         }
     }
 
@@ -180,6 +204,8 @@ public class MutualExclusionClient extends BaseServer {
         if (curOpCount >= opCount) {
             curOpCount = 0;
             System.out.println("finish all " + opCount + " operations");
+            long endTimestamp = System.currentTimeMillis();
+            logger.trace("finish running algorithm, total time: " + (endTimestamp - startTimestamp));
             return;
         }
         int opId = Util.genRandom(3);
@@ -237,6 +263,34 @@ public class MutualExclusionClient extends BaseServer {
         } else {
             SemaUtil.signal(writeCountMutex);
         }
+    }
+
+
+    /**
+     * calculate inbound or outbound message total count
+     * @param type type
+     * @return count
+     */
+    public int allMsgCount(String type) {
+        int totalCount = 0;
+        switch (type) {
+            case Constant.COUNT_INBOUND_MSG: {
+                for (MutexBase mutexBase : meAlgoList) {
+                    totalCount += mutexBase.getInboundMsgCount();
+                }
+                break;
+            }
+            case Constant.COUNT_OUTBOUND_MSG: {
+                for (MutexBase mutexBase : meAlgoList) {
+                    totalCount += mutexBase.getOutboundMsgCount();
+                }
+                break;
+            }
+            default:
+                break;
+        }
+
+        return totalCount;
     }
 
     /**

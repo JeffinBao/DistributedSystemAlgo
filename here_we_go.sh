@@ -26,12 +26,12 @@ tell application "iTerm2"
     # create clients
     delay 0.5
     write text "cd ./src/main/java"
-    write text "java -Dlog4j.configurationFile=../resources/log4j2.xml -cp ../../../lib/*:. MainApp client 0"
+    write text "java -Dlog4j.configurationFile=../resources/log4j2.xml -cp ../../../lib/*:. MainApp client 0 " & "$1"
     repeat with i from 0 to 3
       tell application "System Events" to keystroke "d" using {command down}
       delay 0.5
       write text "cd ./src/main/java"
-      write text "java -Dlog4j.configurationFile=../resources/log4j2.xml -cp ../../../lib/*:. MainApp client " & (i+1)
+      write text "java -Dlog4j.configurationFile=../resources/log4j2.xml -cp ../../../lib/*:. MainApp client " & (i+1) & " " & "$1"
     end repeat
     # init all connections by executing "connect" and moving left
     repeat with i from 0 to 3

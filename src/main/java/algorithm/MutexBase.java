@@ -23,6 +23,8 @@ public abstract class MutexBase {
     private LinkedBlockingQueue<String> inboundMsgBlockingQueue;
     protected Map<Integer, LinkedBlockingQueue<String>> outboundBlockingQueueMap;
     private boolean closeHandler;
+    protected int inboundMsgCount;
+    protected int outboundMsgCount;
 
     public MutexBase(int me, int fileId,
                      Map<Integer, Connection> clientConnMap,
@@ -45,6 +47,7 @@ public abstract class MutexBase {
             while (!closeHandler) {
                 try {
                     String message = inboundMsgBlockingQueue.take();
+                    inboundMsgCount++;
                     logger.trace("handle inbound msg: " + message);
                     handleMsg(message);
                 } catch (InterruptedException ex) {
@@ -61,6 +64,22 @@ public abstract class MutexBase {
      */
     public void tearDown() {
         closeHandler = true;
+    }
+
+    /**
+     * get inbound message count
+     * @return message count
+     */
+    public int getInboundMsgCount() {
+        return inboundMsgCount;
+    }
+
+    /**
+     * get outbound message count
+     * @return message count
+     */
+    public int getOutboundMsgCount() {
+        return outboundMsgCount;
     }
 
     /**

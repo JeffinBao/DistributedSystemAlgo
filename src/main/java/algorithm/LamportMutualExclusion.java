@@ -187,6 +187,7 @@ public class LamportMutualExclusion extends MutexBase {
     private void putIntoOutboundBlockingQueue(int target, String msg) {
         try {
             outboundBlockingQueueMap.get(target).put(msg);
+            outboundMsgCount++;
             logger.trace("insert outbound msg and prepare to send to client " + target + " msg: " + msg);
         } catch (InterruptedException ex) {
             ex.printStackTrace();
