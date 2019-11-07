@@ -1,4 +1,4 @@
-﻿# Distributed System Algorithms
+# Distributed System Algorithms
 
 ## Network Topology
 ![Network Topology](https://raw.githubusercontent.com/JeffinBao/DistributedSystemAlgo/dev/diagram/pic/Network_Topology.png)
@@ -51,7 +51,7 @@ Also, each file has a distributed mutual exclusion algorithm object to ensure on
 ![Lamport Mutual Exclusion](https://raw.githubusercontent.com/JeffinBao/DistributedSystemAlgo/dev/diagram/pic/Lamport_Mutual_Exclusion.png)
 
 ##### Analysis
-  - Number of messages: **3*(N - 1)**.
+  - Number of messages: **3x(N - 1)**.
   - Synchronization delay: one message propagation delay.
   - Optimization: Client-side server `j` can suppress a **REPLY** to `i` if `j` has already sent a request to `i` with a higher timestamp.
 
@@ -70,10 +70,10 @@ Also, each file has a distributed mutual exclusion algorithm object to ensure on
     - Sends all deferred replies, since it will hold some lower priority request's **REPLY**.
 
 ##### Example
-![RC_with_Optimization](https://raw.githubusercontent.com/JeffinBao/DistributedSystemAlgo/dev/diagram/pic/RC_with_Optimization.png)
+![RA_with_Optimization](https://raw.githubusercontent.com/JeffinBao/DistributedSystemAlgo/dev/diagram/pic/RA_with_Optimization.png)
 
 ##### Analysis
-  - Number of messages: less than **2*(N - 1)** for the optimization version.
+  - Number of messages: less than **2x(N - 1)** for the optimization version.
   - Synchronization delay: one message propagation delay.
 
 ## How to Run
@@ -97,3 +97,4 @@ I didn't do a correctness verification because that's not what I am capable of t
 1. [Time, Clocks, and the Ordering of Events in a Distributed System](https://lamport.azurewebsites.net/pubs/time-clocks.pdf)
 2. [An Optimal Algorithm for Mutual Exclusion in Computer Networks](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.507.9382&rep=rep1&type=pdf)
 3. [On Mutual Exclusion in Computer Networks](https://www.researchgate.net/publication/265077447_On_Mutual_Exclusion_in_Computer_Networks)
+
