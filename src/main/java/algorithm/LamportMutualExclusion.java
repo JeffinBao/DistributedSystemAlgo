@@ -37,6 +37,7 @@ public class LamportMutualExclusion extends MutexBase {
         String[] split = msg.split(" ", 2);
         switch (split[0]) {
             case Constant.REQ_ME: {
+                inboundMsgCount++;
                 // Format: fileId + Constant.REQ_ME + " " + ourSeqNum + " " + me + " " + requestNum
                 String[] split1 = split[1].split(" ");
                 int otherSeqNum = Integer.parseInt(split1[0]);
@@ -46,6 +47,7 @@ public class LamportMutualExclusion extends MutexBase {
                 break;
             }
             case Constant.REPLY_ME: {
+                inboundMsgCount++;
                 // Format: fileId + " " + Constant.REPLY_ME + " " + timestamp + " " + me
                 String[] split1 = split[1].split(" ");
                 int otherSeqNum = Integer.parseInt(split1[0]);
@@ -54,6 +56,7 @@ public class LamportMutualExclusion extends MutexBase {
                 break;
             }
             case Constant.RELEASE_ME: {
+                inboundMsgCount++;
                 // Format:  fileId + " " + Constant.RELEASE_ME + " " + timestamp + " " + me
                 String[] split1 = split[1].split(" ");
                 int otherSeqNum = Integer.parseInt(split1[0]);

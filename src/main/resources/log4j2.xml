@@ -91,7 +91,7 @@
         <Logger name="client4_logger" additivity="false">
             <AppenderRef ref="client4_log" />
         </Logger>
-        <Root level="all" >
+        <Root level="debug" >
             <AppenderRef ref="console" />
         </Root>
     </Loggers>

@@ -39,7 +39,7 @@ Also, each file has a distributed mutual exclusion algorithm object to ensure on
   - **REQUEST** from client-side server `i`:
       -  Sends **REQUEST(timestamp, i)** to all other client-side servers.
       -  Adds **REQUEST(timestamp, i)** to its request queue sorted by timestamp(I used PriorityQueue in implementation).
-      -  Enters into critical section on receiving **messages(not only rely message)** from all other client-side servers, and find its **REQUEST** at the top of its request queue.
+      -  Enters into critical section on receiving **messages(not only reply message)** from all other client-side servers, and find its **REQUEST** at the top of its request queue.
   - **REPLY** from client-side server `j` to `i`:
       - Sends timestamped **REPLY** to client-side server `i`.
       - Adds **REQUEST(timestamp, i)** to it request queue sorted by timestamp.
@@ -60,7 +60,7 @@ Also, each file has a distributed mutual exclusion algorithm object to ensure on
 ##### Algorithm outline:
   - **REQUEST** from client-side server `i`:
       - Sends **REQUEST(timestamp, i)** to all other client-side servers.
-      - Enters into critical on receiving all **REPLY** from other client-side servers. And `i` can hold the permission from `j` until `i` sends a **REPLY** to `j`. This means `i` doesn't need to send request to ask permission from `j` during this time period.
+      - Enters into critical section on receiving all **REPLY** from other client-side servers. And `i` can hold the permission from `j` until `i` sends a **REPLY** to `j`. This means `i` doesn't need to send request to ask permission from `j` during this time period.
   - **REPLY** from client-side server `j` to `i`:
       - Sends timestamped **REPLY** to `i` if either of the following conditions satisfies:
         - `j` is neither requesting nor executing its critical section.

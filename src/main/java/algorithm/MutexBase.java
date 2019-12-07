@@ -47,7 +47,7 @@ public abstract class MutexBase {
             while (!closeHandler) {
                 try {
                     String message = inboundMsgBlockingQueue.take();
-                    inboundMsgCount++;
+//                    inboundMsgCount++;
                     logger.trace("handle inbound msg: " + message);
                     handleMsg(message);
                 } catch (InterruptedException ex) {
