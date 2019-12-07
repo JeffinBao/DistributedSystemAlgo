@@ -85,8 +85,8 @@ public class MainApp {
                         clientSideServer.initConnection();
 //                        clientSideServer.initMEList();
                     } else if (command.equals(Constant.COMMAND_CLOSE)) {
-                        logger.trace("total inbound msg count: " + clientSideServer.allMsgCount(Constant.COUNT_INBOUND_MSG));
-                        logger.trace("total outbound msg count: " + clientSideServer.allMsgCount(Constant.COUNT_OUTBOUND_MSG));
+                        logger.debug("total inbound msg count: " + clientSideServer.allMsgCount(Constant.COUNT_INBOUND_MSG));
+                        logger.debug("total outbound msg count: " + clientSideServer.allMsgCount(Constant.COUNT_OUTBOUND_MSG));
                         clientSideServer.closeConnection();
                         break;
                     } else {

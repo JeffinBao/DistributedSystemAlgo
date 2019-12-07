@@ -205,7 +205,7 @@ public class MutualExclusionClient extends BaseServer {
             curOpCount = 0;
             System.out.println("finish all " + opCount + " operations");
             long endTimestamp = System.currentTimeMillis();
-            logger.trace("finish running algorithm, total time: " + (endTimestamp - startTimestamp));
+            logger.debug("finish running algorithm, total time: " + (endTimestamp - startTimestamp));
             return;
         }
         int opId = Util.genRandom(3);

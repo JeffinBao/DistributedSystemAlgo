@@ -58,6 +58,7 @@ public class RaAlgoWithCrOptimization extends MutexBase {
         String[] split = msg.split(" ", 2);
         switch (split[0]) {
             case Constant.REQ_ME: {
+                inboundMsgCount++;
                 // Format: fileId + Constant.REQ_ME + " " + ourSeqNum + " " + me + " " + requestNum
                 String[] split1 = split[1].split(" ");
                 int otherSeqNum = Integer.parseInt(split1[0]);
@@ -67,6 +68,7 @@ public class RaAlgoWithCrOptimization extends MutexBase {
                 break;
             }
             case Constant.REPLY_ME: {
+                inboundMsgCount++;
                 // Format: fileId + " " + Constant.REPLY_ME + " " + me
                 int otherClientId = Integer.parseInt(split[1]);
                 treatReplyMsg(otherClientId);
